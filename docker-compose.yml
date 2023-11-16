@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  mongo:
+    image: mongo
+    container_name: my-mongo
+    ports:
+      - "27017:27017"
+
+  myapp:
+    build: .
+    container_name: my-app
+    ports:
+      - 8000:80
+    depends_on:
+      - mongo

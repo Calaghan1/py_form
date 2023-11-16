@@ -1,10 +1,12 @@
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse
-from tinydb import TinyDB, Query
 import re
 from datetime import datetime
 app = FastAPI()
-db = TinyDB('database.json')
+import pymongo
+client = pymongo.MongoClient("mongodb://mongo:27017/")
+db = client["mydatabase"]
+collection = db["mycollection"]
 
 # Example test database
 templates = [
@@ -15,13 +17,12 @@ templates = [
     },
     {
         "name": "OrderForm",
-        "user_name": "text",
         "lead_email": "email",
         "number": "phone",
     }
 ]
-
-db.insert_multiple(templates)
+collection.insert_many(templates)
+# db.insert_multiple(templates)
 
 def validate_date(value):
     date_formats = ['%Y-%m-%d', '%d.%m.%Y']
@@ -45,38 +46,49 @@ def validate_phone(value):
 def validate_email(value):
     return bool(re.match(r'(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)', value))
 
+def validate_fields(data):
+    if validate_date(data):
+        return 'data'
+    if validate_phone(data):
+        return 'phone'
+    if validate_email(data):
+        return 'email'
+    return 'text'
+
 def get_template_matching_fields(input_fields):
+    set1 = set(input_fields.keys())
+    db = collection.find()
     for template in db:
         template_fields = template.copy()
         template_name = template_fields.pop('name')
+        tmp = template_fields.pop('_id')
+        print(template_name)
+        set2 = set(template_fields.keys())
+        print(set2)
+        res = False
+        if set2.issubset(set1):
+            for elem in set1:
+                if template_fields[elem] == 'phone':
+                    print("PHONE")
+                    res = validate_phone(input_fields[elem])
+                if template_fields[elem] == 'date':
+                    print("DATE")
+                    res = validate_date(input_fields[elem])
+                if template_fields[elem] == 'email':
+                    print("EMAIL")
+                    res = validate_email(input_fields[elem])
+                if res == False:
+                    break
+            if res:
+                return template_name
+    resp = {}
+    for elem in set1:
+        resp[elem] = validate_fields(input_fields[elem])
+    return resp
 
-        if all(field_name in input_fields and
-               input_fields[field_name] and
-               (field_type := template_fields.get(field_name)) and
-               (field_type == 'date' and validate_date(input_fields[field_name]) or
-                field_type == 'phone' and validate_phone(input_fields[field_name]) or
-                field_type == 'email' and validate_email(input_fields[field_name]) or
-                field_type == 'text')
-               for field_name in template_fields):
-            return template_name
-
-        typed_fields = {field_name: 'date' if validate_date(value) else
-                                  'phone' if validate_phone(value) else
-                                  'email' if validate_email(value) else
-                                  'text'
-                    for field_name, value in input_fields.items()}
-
-    # for field_name in input_fields:
-    #     fieled_type = template_fields.get(field_name)
-    #     if fieled_type == 'date' and validate_date(input_fields[field_name])
-        
-
-    return typed_fields
 
 @app.post("/get_form")
 async def get_form(request: Request):
-    print(dict(request.query_params))
-    print(type(request.query_params))
     result = get_template_matching_fields(dict(request.query_params))
 
     if isinstance(result, dict):
