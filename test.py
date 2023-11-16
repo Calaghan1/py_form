@@ -7,3 +7,6 @@ def test_responce():
     url = "http://0.0.0.0:8000/get_form?lead_email=calaghan@yandex.ru&number=8 916 374 39 73"
     response = requests.post(url).json()
     assert response == "OrderForm"
+    url = "http://0.0.0.0:8000/get_form?user_name=фывфыв&order_date=08.05.1999"
+    response = requests.post(url).json()
+    assert response == "MyForm"
